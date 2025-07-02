@@ -1,0 +1,7 @@
+jupyter
+ipykernel
+numpy==1.24.4
+paddleocr
+opencv-python
+pillow
+matplotlib
