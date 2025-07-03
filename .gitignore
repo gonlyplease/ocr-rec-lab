@@ -10,3 +10,8 @@ ocr-rec-lab-venv/
 
 
 output/
+
+data/cad_crops/
+data/cad_crops_clean/
+
+data/
