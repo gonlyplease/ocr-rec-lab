@@ -1,0 +1,20 @@
+2025-07-20 21:24:25,099 - INFO - Using device: cuda
+2025-07-20 21:24:25,099 - INFO - Training arguments: {'train_dir': '../data/rotation/classification/train', 'val_dir': '../data/rotation/classification/test', 'epochs': 30, 'batch_size': 32, 'lr': 1e-05, 'image_size': 300, 'checkpoint_dir': 'checkpoints', 'patience': 8, 'min_delta': 0.01}
+2025-07-20 21:24:27,586 - INFO - Starting training for 30 epochs...
+2025-07-20 22:06:30,281 - INFO - Epoch 01: Train Loss=0.0916, Train Acc=96.99%, Val Loss=0.0255, Val Acc=99.30%, Time=2522.4s
+2025-07-20 22:46:16,166 - INFO - Epoch 02: Train Loss=0.0264, Train Acc=99.28%, Val Loss=0.0217, Val Acc=99.46%, Time=2385.6s
+2025-07-20 23:25:36,841 - INFO - Epoch 03: Train Loss=0.0166, Train Acc=99.56%, Val Loss=0.0170, Val Acc=99.57%, Time=2360.4s
+2025-07-21 00:04:50,812 - INFO - Epoch 04: Train Loss=0.0112, Train Acc=99.69%, Val Loss=0.0158, Val Acc=99.61%, Time=2353.7s
+2025-07-21 00:44:14,795 - INFO - Epoch 05: Train Loss=0.0084, Train Acc=99.75%, Val Loss=0.0172, Val Acc=99.61%, Time=2363.9s
+2025-07-21 01:23:37,754 - INFO - Epoch 06: Train Loss=0.0065, Train Acc=99.80%, Val Loss=0.0168, Val Acc=99.63%, Time=2362.7s
+2025-07-21 02:02:58,843 - INFO - Epoch 07: Train Loss=0.0053, Train Acc=99.83%, Val Loss=0.0224, Val Acc=99.50%, Time=2361.0s
+2025-07-21 02:42:32,460 - INFO - Epoch 08: Train Loss=0.0043, Train Acc=99.86%, Val Loss=0.0189, Val Acc=99.56%, Time=2373.5s
+2025-07-21 03:21:54,378 - INFO - Epoch 09: Train Loss=0.0037, Train Acc=99.88%, Val Loss=0.0185, Val Acc=99.66%, Time=2361.7s
+2025-07-21 04:01:18,148 - INFO - Epoch 10: Train Loss=0.0029, Train Acc=99.90%, Val Loss=0.0178, Val Acc=99.65%, Time=2363.6s
+2025-07-21 04:40:43,134 - INFO - Epoch 11: Train Loss=0.0027, Train Acc=99.91%, Val Loss=0.0190, Val Acc=99.64%, Time=2364.9s
+2025-07-21 05:20:01,990 - INFO - Epoch 12: Train Loss=0.0024, Train Acc=99.92%, Val Loss=0.0215, Val Acc=99.62%, Time=2358.7s
+2025-07-21 05:59:25,503 - INFO - Epoch 13: Train Loss=0.0021, Train Acc=99.93%, Val Loss=0.0194, Val Acc=99.65%, Time=2363.4s
+2025-07-21 06:38:50,835 - INFO - Epoch 14: Train Loss=0.0008, Train Acc=99.98%, Val Loss=0.0183, Val Acc=99.72%, Time=2365.0s
+2025-07-21 07:18:13,858 - INFO - Epoch 15: Train Loss=0.0005, Train Acc=99.99%, Val Loss=0.0185, Val Acc=99.73%, Time=2362.8s
+2025-07-21 07:58:29,558 - INFO - Epoch 16: Train Loss=0.0004, Train Acc=99.99%, Val Loss=0.0196, Val Acc=99.70%, Time=2415.6s
+2025-07-21 08:38:52,686 - INFO - Epoch 17: Train Loss=0.0004, Train Acc=99.99%, Val Loss=0.0202, Val Acc=99.72%, Time=2422.9s

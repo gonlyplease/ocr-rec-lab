@@ -69,8 +69,8 @@ def summarize_dataset(dataset: ImageFolder, name: str = "dataset") -> None:
     print()
 
 
-def create_data_loaders(train_dir: str, val_dir: str, batch_size: int = 32, 
-                       image_size: int = 224) -> tuple:
+def create_data_loaders(train_dir: str, val_dir: str, batch_size: int = 256, 
+                       image_size: int = 300) -> tuple:
     """Create training and validation data loaders."""
     transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
@@ -247,13 +247,13 @@ def main():
                        help="Training data directory")
     parser.add_argument("--val_dir", type=str, default="../data/rotation/classification/test", 
                        help="Validation data directory")
-    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--image_size", type=int, default=224, help="Input image size")
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
+    parser.add_argument("--image_size", type=int, default=300, help="Input image size")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", 
                        help="Directory to save checkpoints")
-    parser.add_argument("--patience", type=int, default=5, 
+    parser.add_argument("--patience", type=int, default=8, 
                        help="Early stopping patience")
     parser.add_argument("--min_delta", type=float, default=0.01,
                        help="Minimum improvement for early stopping")
