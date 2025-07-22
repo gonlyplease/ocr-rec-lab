@@ -1,0 +1,27 @@
+venv/
+__pycache__/
+.ipynb_checkpoints/
+
+/docs
+
+/docs/
+
+ocr-rec-lab-venv/
+collab-venv/
+
+
+output/
+
+data/
+
+
+pipeline/checkpoints
+pipeline/checkpoints/
+pipeline_prep/checkpoints
+pipeline_prep/checkpoints/
+
+# Optional: andere typische Sachen
+__pycache__/
+*.pyc
+*.pth
+*.ipynb_checkpoints/
