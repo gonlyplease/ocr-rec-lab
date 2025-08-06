@@ -83,6 +83,25 @@ def create_obb(ann: Dict[str, Any]):
     angle = ann.get("attributes", {}).get("rotation", 0.0)
     ann["bbox"] = [cx, cy, w, h, angle]
 
+def crop_oriented_bbox(img, cx, cy, w, h, theta):
+    """Crop oriented bounding box from image - from extract_crops.py"""
+    # Step 1: Rotate the entire image around the bbox center
+    M = cv2.getRotationMatrix2D((cx, cy), theta, 1.0)
+    rotated = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]))
+    
+    # Step 2: Crop the now-aligned rectangle
+    x1 = int(cx - w/2)
+    y1 = int(cy - h/2)
+    x2 = int(cx + w/2)
+    y2 = int(cy + h/2)
+    
+    # Ensure bounds are within image
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(img.shape[1], x2), min(img.shape[0], y2)
+    
+    cropped = rotated[y1:y2, x1:x2]
+    return cropped
+
 # %%
 # Image & Rotation Helpers
 def crop_obb_trim(img: np.ndarray, cx, cy, w, h, angle, pad=0) -> np.ndarray:
@@ -106,165 +125,166 @@ def predict_rotation(model: nn.Module, patch: np.ndarray) -> float:
     return float(CLASS_NAMES[torch.argmax(logits, dim=1).item()])
 
 
+def bbox_to_points(x, y, w, h):
+    """Convert bbox [x,y,w,h] to 4 corner points."""
+    return [
+        [x, y],             # top-left
+        [x + w, y],         # top-right
+        [x + w, y + h],     # bottom-right
+        [x, y + h]          # bottom-left
+    ]
+
+
+def roll_points(points, correction_angle):
+    """Roll points based on rotation angle (rounded to nearest 90 degrees)."""
+    # Normalize angle to 0-360 range and round to nearest 90 degrees
+    angle = correction_angle % 360
+    angle = round(angle / 90) * 90
+    angle = angle % 360
+    
+    if angle == 0:
+        return points
+    elif angle == 90:
+        # Roll forward by 1: TL->TR, TR->BR, BR->BL, BL->TL
+        return [points[3], points[0], points[1], points[2]]
+    elif angle == 180:
+        # Roll forward by 2: TL->BR, TR->BL, BR->TL, BL->TR
+        return [points[2], points[3], points[0], points[1]]
+    elif angle == 270:
+        # Roll forward by 3: TL->BL, TR->TL, BR->TR, BL->BR
+        return [points[1], points[2], points[3], points[0]]
+
+
+def points_to_bbox(points):
+    """Convert 4 points back to [x,y,w,h] format by finding axis-aligned bounding box."""
+    # Extract all x and y coordinates
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    
+    # Find min/max to create axis-aligned bounding box
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    
+    # Convert to [x, y, w, h] format
+    x = x_min
+    y = y_min
+    w = x_max - x_min
+    h = y_max - y_min
+    
+    return x, y, w, h
+
+
 def rotate_axis_aligned_bbox(x, y, w, h, correction_angle, img_width, img_height):
     """
-    Rotate an axis-aligned bbox by correction_angle and return the new axis-aligned bbox.
+    Update bbox for rotation correction by swapping dimensions when needed.
     
     Args:
         x, y: Top-left corner of original bbox
         w, h: Width and height of original bbox
-        correction_angle: Rotation angle in degrees (positive = counter-clockwise)
+        correction_angle: Rotation correction in degrees 
         img_width, img_height: Image dimensions for boundary checking
     
     Returns:
-        new_x, new_y, new_w, new_h: New axis-aligned bbox that contains the rotated rectangle
+        new_x, new_y, new_w, new_h: New axis-aligned bbox
     """
-    # Convert to radians (negative because OpenCV uses clockwise rotation)
-    theta = np.deg2rad(-correction_angle)
+    # Normalize angle to 0-360 range and round to nearest 90 degrees
+    angle = correction_angle % 360
+    angle = round(angle / 90) * 90
+    angle = angle % 360
     
-    # Center point of the bbox
+    # Center of the original bbox
     cx = x + w/2
     cy = y + h/2
     
-    # Four corners of the original bbox
-    corners = np.array([
-        [x, y],           # top-left
-        [x + w, y],       # top-right  
-        [x + w, y + h],   # bottom-right
-        [x, y + h]        # bottom-left
-    ])
+    if angle == 0:
+        new_x, new_y, new_w, new_h = x, y, w, h
+    elif angle == 90:
+        # 90° rotation: width becomes height, height becomes width
+        new_w = h
+        new_h = w
+        new_x = cx - new_w/2
+        new_y = cy - new_h/2
+    elif angle == 180:
+        # 180° rotation: dimensions stay the same, just recentered
+        new_w = w
+        new_h = h
+        new_x = cx - new_w/2
+        new_y = cy - new_h/2
+    elif angle == 270:
+        # 270° rotation: width becomes height, height becomes width
+        new_w = h
+        new_h = w
+        new_x = cx - new_w/2
+        new_y = cy - new_h/2
     
-    # Rotation matrix
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
-    rotation_matrix = np.array([
-        [cos_theta, -sin_theta], 
-        [sin_theta, cos_theta]
-    ])
-    
-    # Translate corners to origin (center at 0,0)
-    centered_corners = corners - np.array([cx, cy])
-    
-    # Apply rotation
-    rotated_corners = np.dot(centered_corners, rotation_matrix.T)
-    
-    # Translate back to original position
-    final_corners = rotated_corners + np.array([cx, cy])
-    
-    # Find the bounding box of rotated corners
-    min_x = np.min(final_corners[:, 0])
-    max_x = np.max(final_corners[:, 0])
-    min_y = np.min(final_corners[:, 1])
-    max_y = np.max(final_corners[:, 1])
-    
-    # Calculate new bbox parameters
-    new_x = min_x
-    new_y = min_y
-    new_w = max_x - min_x
-    new_h = max_y - min_y
-    
-    # Clamp to image boundaries
-    # First clamp the position
-    if new_x < 0:
-        new_w += new_x  # Reduce width by the amount we're shifting
-        new_x = 0
-    if new_y < 0:
-        new_h += new_y  # Reduce height by the amount we're shifting
-        new_y = 0
-    
-    # Then clamp the size
-    if new_x + new_w > img_width:
-        new_w = img_width - new_x
-    if new_y + new_h > img_height:
-        new_h = img_height - new_y
-    
-    # Ensure we don't have negative dimensions
-    new_w = max(0, new_w)
-    new_h = max(0, new_h)
+    # Ensure bbox stays within image bounds
+    new_x = max(0, min(new_x, img_width - new_w))
+    new_y = max(0, min(new_y, img_height - new_h))
     
     return new_x, new_y, new_w, new_h
 
-
-# Annotation Correction
-def rotate_axis_aligned_bbox(x, y, w, h, correction_angle, img_width, img_height):
-    """Rotate an axis-aligned bbox and recalculate the new top-left corner."""
-    # Convert correction angle to radians
-    theta = np.deg2rad(correction_angle)
-    
-    # Current center point
-    cx = x + w/2
-    cy = y + h/2
-    
-    # Define the four corners of the original bbox
-    corners = np.array([
-        [x, y],           # top-left
-        [x + w, y],       # top-right  
-        [x + w, y + h],   # bottom-right
-        [x, y + h]        # bottom-left
-    ])
-    
-    # Rotation matrix
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
-    rotation_matrix = np.array([[cos_theta, -sin_theta], 
-                               [sin_theta, cos_theta]])
-    
-    # Rotate corners around center point
-    centered_corners = corners - np.array([cx, cy])
-    rotated_corners = centered_corners @ rotation_matrix.T
-    final_corners = rotated_corners + np.array([cx, cy])
-    
-    # Find new axis-aligned bounding box
-    min_x = np.min(final_corners[:, 0])
-    min_y = np.min(final_corners[:, 1])
-    max_x = np.max(final_corners[:, 0])
-    max_y = np.max(final_corners[:, 1])
-    
-    # Clamp to image boundaries
-    new_x = max(0, min_x)
-    new_y = max(0, min_y)
-    new_w = min(img_width - new_x, max_x - min_x)
-    new_h = min(img_height - new_y, max_y - min_y)
-    
-    return new_x, new_y, new_w, new_h
 
 def update_annotations_with_predictions(coco_data: dict, predictions: pd.DataFrame) -> dict:
-    """Update COCO annotations with corrected rotations and adjusted bounding boxes."""
+    """Update COCO annotations with corrected polygon points based on rotation predictions."""
     coco_corrected = deepcopy(coco_data)
-    pred_dict = predictions.set_index('id')[['orig', 'pred']].to_dict('index')
-    
-    # Create image lookup for dimensions
-    img_lookup = {img['id']: img for img in coco_corrected['images']}
+    pred_dict = predictions.set_index('id')[['pred', 'original_angle']].to_dict('index')
     
     for ann in coco_corrected["annotations"]:
         if ann["id"] in pred_dict:
-            orig_rotation = pred_dict[ann["id"]]['orig']
             predicted_rotation = pred_dict[ann["id"]]['pred']
+            original_angle = pred_dict[ann["id"]]['original_angle']
             
-            # Calculate correction needed
-            correction_angle = predicted_rotation - orig_rotation
-            
-            if correction_angle != 0:  # Only update if correction is needed
-                # Get image dimensions
-                img_info = img_lookup[ann['image_id']]
-                img_width = img_info['width']
-                img_height = img_info['height']
-                
-                # Original bbox format: [x, y, w, h]
+            if predicted_rotation != 0:  # Only update if correction is needed
+                # Get original bbox [x, y, w, h]
                 x, y, w, h = ann["bbox"]
                 
-                # Calculate new bbox after rotation correction
-                new_x, new_y, new_w, new_h = rotate_axis_aligned_bbox(
-                    x, y, w, h, correction_angle, img_width, img_height
-                )
+                # Apply rotation transformation to bbox
+                # For -270° (equivalent to +90°): w becomes h, h becomes w
+                # For -180°: dimensions stay same, position changes
+                # For -90° (equivalent to +270°): w becomes h, h becomes w
+                rotation_normalized = (-predicted_rotation) % 360
                 
-                # Update both bbox coordinates AND rotation attribute
+                if rotation_normalized == 90 or rotation_normalized == 270:
+                    # Width and height swap for 90° and 270° rotations
+                    new_w, new_h = h, w
+                    # Adjust position - center stays roughly the same
+                    cx, cy = x + w/2, y + h/2
+                    new_x = cx - new_w/2
+                    new_y = cy - new_h/2
+                else:
+                    # For 0° and 180°, dimensions stay the same
+                    new_x, new_y, new_w, new_h = x, y, w, h
+                
                 ann["bbox"] = [new_x, new_y, new_w, new_h]
                 
-                # Update the rotation attribute to the corrected value
+                # Update segmentation if present
+                if "segmentation" in ann and ann["segmentation"] and len(ann["segmentation"]) > 0:
+                    seg_points = ann["segmentation"][0]
+                    if len(seg_points) >= 8:  # At least 4 points * 2 coordinates
+                        # Convert to point pairs (taking first 4 points if more exist)
+                        seg_point_pairs = [[seg_points[i], seg_points[i+1]] for i in range(0, 8, 2)]
+                        
+                        # Roll the segmentation points the same way
+                        rolled_seg_points = roll_points(seg_point_pairs, -predicted_rotation)
+                        
+                        # Convert back to flat list (keep any additional points unchanged)
+                        new_seg_points = [coord for point in rolled_seg_points for coord in point]
+                        if len(seg_points) > 8:
+                            new_seg_points.extend(seg_points[8:])  # Keep additional points
+                        ann["segmentation"][0] = new_seg_points
+                
+                # Update rotation attribute - final rotation after applying correction
+                # Since we rolled the polygon by -predicted_rotation, 
+                # final rotation = original_rotation - predicted_rotation
+                final_rotation = (original_angle - predicted_rotation) % 360
                 if "attributes" not in ann:
                     ann["attributes"] = {}
-                ann["attributes"]["rotation"] = predicted_rotation
+                ann["attributes"]["rotation"] = final_rotation
+            else:
+                # No correction needed, keep original rotation
+                if "attributes" not in ann:
+                    ann["attributes"] = {}
+                ann["attributes"]["rotation"] = original_angle
     
     return coco_corrected
 
@@ -273,6 +293,8 @@ def update_annotations_with_predictions(coco_data: dict, predictions: pd.DataFra
 def process_batch(batch_dir: Path, model: nn.Module, debug: bool=False, save_corrected: bool=True) -> pd.DataFrame:
     img_dir = batch_dir / "images" / "default"
     coco_default = load_coco(batch_dir / "annotations" / "instances_default.json")
+    
+    # Convert to OBB format for oriented cropping
     coco_obb = deepcopy(coco_default)
     for ann in coco_obb["annotations"]:
         create_obb(ann)
@@ -280,9 +302,9 @@ def process_batch(batch_dir: Path, model: nn.Module, debug: bool=False, save_cor
     records = []
     cache = {}
     for ann in tqdm(coco_obb["annotations"], desc=batch_dir.name):
-        cx, cy, w, h, orig = ann["bbox"]
-        if orig not in CLASS_NAMES:
-            continue
+        # Get OBB format [cx, cy, w, h, angle]
+        cx, cy, w, h, angle = ann["bbox"]
+        
         img_info = next(img for img in coco_default["images"] if img["id"]==ann["image_id"])
         path = img_dir / img_info["file_name"]
         if not path.exists():
@@ -298,9 +320,22 @@ def process_batch(batch_dir: Path, model: nn.Module, debug: bool=False, save_cor
                 continue
             cache[path] = img
 
-        patch = crop_obb_trim(img, cx, cy, w, h, orig)
-        pred = predict_rotation(model, patch)
-        records.append({"id": ann["id"], "orig": orig, "pred": pred, "file": path.name})
+        # Extract oriented crop (this makes it horizontal)
+        crop = crop_oriented_bbox(img, cx, cy, w, h, angle)
+        if crop.size == 0:
+            logger.warning(f"Empty crop for annotation {ann['id']}")
+            continue
+            
+        # Predict the correct orientation on the horizontal crop
+        pred_rotation = predict_rotation(model, crop)
+        
+        records.append({
+            "id": ann["id"], 
+            "pred": pred_rotation, 
+            "file": path.name,
+            "original_angle": angle
+        })
+        
         if debug:
             # Create separate folders for original and corrected crops
             orig_dir = DEBUG_IMAGES_DIR / "orig"
@@ -308,18 +343,25 @@ def process_batch(batch_dir: Path, model: nn.Module, debug: bool=False, save_cor
             orig_dir.mkdir(parents=True, exist_ok=True)
             corrected_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save original crop
-            cv2.imwrite(str(orig_dir / f"{batch_dir.name}_{ann['id']}.png"), patch)
+            # Save original oriented crop (should be horizontal)
+            cv2.imwrite(str(orig_dir / f"{batch_dir.name}_{ann['id']}.png"), crop)
             
-            # Save corrected crop (always save, even if same as original)
-            corrected_patch = crop_obb_trim(img, cx, cy, w, h, pred)
-            cv2.imwrite(str(corrected_dir / f"{batch_dir.name}_{ann['id']}.png"), corrected_patch)
+            # Save corrected crop (rotated in opposite direction of prediction)
+            if pred_rotation != 0:
+                corrected_crop = cv2.rotate(crop, {
+                    90: cv2.ROTATE_90_CLOCKWISE,      # Opposite of 90° CCW
+                    180: cv2.ROTATE_180,              # 180° is same both ways
+                    270: cv2.ROTATE_90_COUNTERCLOCKWISE  # Opposite of 270° (90° CW)
+                }.get(pred_rotation, cv2.ROTATE_180))
+            else:
+                corrected_crop = crop
+            cv2.imwrite(str(corrected_dir / f"{batch_dir.name}_{ann['id']}.png"), corrected_crop)
     
     from pandas import DataFrame
     df_results = DataFrame(records)
     
     # Save corrected annotations if requested
-    if save_corrected and not df_results.empty:
+    if not df_results.empty:
         corrected_coco = update_annotations_with_predictions(coco_default, df_results)
         corrected_path = batch_dir / "annotations" / "instances_corrected.json"
         save_coco(corrected_coco, corrected_path)
@@ -331,7 +373,7 @@ def process_batch(batch_dir: Path, model: nn.Module, debug: bool=False, save_cor
 # Run All Batches
 
 # Configuration
-SAVE_CORRECTIONS = True  # Set to False for analysis-only mode
+SAVE_CORRECTIONS = False  # Set to False for analysis-only mode
 DEBUG_MODE = True
 
 torch_model = load_model(CHECKPOINT_PATH)

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(/mnt/c/Users/saschamueller/Documents/GitHub/ocr-rec-lab/venv/Scripts/python.exe correct_annotations.py)"
+    ],
+    "deny": []
+  }
+}
